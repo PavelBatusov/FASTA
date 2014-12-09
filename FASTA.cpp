@@ -133,7 +133,7 @@ void AddDB(char* file_name) {
 	InsertDB(file_name, magic_num);
 }
 
-void Search(char* seq_file_name) {
+void Search(char* seq_file_name, char* diagonals, char* maxlen) {
 	//read input seq
 	std::ifstream input_seq(seq_file_name);
 	std::string seq = "";
@@ -171,8 +171,12 @@ void Search(char* seq_file_name) {
 			sqlite3_finalize(stmt);
 		}
 	}
-	//filter
-	
+	//first filter - diagonals count && max length
+	for (auto it = dump.begin(); it != dump.end(); ) {
+		if (filter1(atoi(diagonals), atoi(maxlen), seq)) {
+			it = dump.erase(it);
+		} else it++;
+	}
 }
 
 int main(int argc, char** argv) {
@@ -181,7 +185,7 @@ int main(int argc, char** argv) {
 		printf("\tpossible arguments:\n");
 		printf("\t\tc <file name> <magic num> - create new DB from <file name> with <magic num>\n");
 		printf("\t\ta <file name> - add sequences from <file name> to exsisting DB\n");
-		printf("\t\ts <file name> - search seq from <file name> in exsisting DB\n");
+		printf("\t\ts <file name> <magic num 1> <magic num 2> - search seq from <file name> in exsisting DB\n");
 		return 0;
 	}
 	
@@ -198,7 +202,7 @@ int main(int argc, char** argv) {
 			break;
 		case 's':
 			//search
-			if (argc > 2) Search(argv[2]);
+			if (argc > 4) Search(argv[2], argv[3], argv[4]);
 			else printf("Not enough arguments\n");
 			break;
 		default:
