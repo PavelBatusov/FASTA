@@ -25,7 +25,7 @@ bool filter1(int d_count, int m_count,
 	for (int i = 1; i < seq1.length(); i++) {
 		for (int j = 1; j < seq2.length(); j++) {
 			if (seq1[i] != seq2[j]) {
-				if (matrix[(i-1)*m+j-1]) count++;
+				if (matrix[(i-1)*m+j-1] > 1) count++;
 			} else {
 				matrix[i*m+j] = matrix[(i-1)*m+j-1] + 1;
 				if (matrix[i*m+j] > maxlen) maxlen = matrix[i*m+j];
@@ -35,7 +35,7 @@ bool filter1(int d_count, int m_count,
 	//free========================================================================
 	delete[] matrix;
 	//check=======================================================================
-	return (count > d_count && maxlen > m_count);
+	return (count < d_count || maxlen < m_count);
 }
 
 static int callback(void* NotUsed, int argc, char** argv, char** azColName){
@@ -69,7 +69,7 @@ void InsertDB(char* file_name, int magic_num) {
 					sqlite3_stmt *stmt;
 					const char *pzTest;
 					std::string insert("INSERT INTO Sequence (description, string) VALUES\
-					(?, ?)");
+(?, ?)");
 					rc = sqlite3_prepare_v2(db, insert.c_str(), insert.length(), 
 																	&stmt, &pzTest);
 					if( rc == SQLITE_OK ){
@@ -79,13 +79,13 @@ void InsertDB(char* file_name, int magic_num) {
 						sqlite3_finalize(stmt);
 					} else { 
 						printf("Can't prepare sqlite3_prepare_v2 'INSERT INTO Sequence (des\
-						cription, string) VALUES(%s, %s)'\n", name.c_str(), seq.c_str()); 
+cription, string) VALUES(%s, %s)'\n", name.c_str(), seq.c_str()); 
 					}
 					//inser subseq--------------------------------------------------------
 					int mainID = sqlite3_last_insert_rowid(db);
 					for (int i = 0; i < seq.length() - magic_num + 1; i++) {
 						insert = "INSERT INTO SubSequence (string, position, baseString) VA\
-						LUES(?, ?, ?)";
+LUES(?, ?, ?)";
 						rc = sqlite3_prepare_v2(db, insert.c_str(), insert.length(), 
 																		&stmt, &pzTest);
 						if( rc == SQLITE_OK ){
@@ -97,8 +97,8 @@ void InsertDB(char* file_name, int magic_num) {
 							sqlite3_finalize(stmt);
 						} else { 
 							printf("Can't prepare sqlite3_prepare_v2 'INSERT INTO SubSequence\
-							 (string, position, baseString) VALUES(%s, %d, %d)'\n", 
-								seq.substr(i, magic_num).c_str(), i, mainID); 
+ (string, position, baseString) VALUES(%s, %d, %d)'\n", 
+										 seq.substr(i, magic_num).c_str(), i, mainID); 
 						}
 					}
 				}
@@ -201,8 +201,8 @@ void Search(char* seq_file_name) {
 	for (int i = 0; i < seq.length() - magic_num + 1; i++) {
 		std::string substr = seq.substr(i, magic_num);
 		std::string select = "SELECT ID, string FROM sequence INNER JOIN (SELECT DI\
-		STINCT baseString FROM SubSequence WHERE string = ? ) AS keys  ON sequence.\
-		id = keys.baseString";
+STINCT baseString FROM SubSequence WHERE string = ? ) AS keys  ON sequence.id =\
+ keys.baseString";
 		sqlite3_stmt *stmt;
 		const char *pzTest;
 		rc = sqlite3_prepare_v2(db, select.c_str(), select.length(), &stmt,&pzTest);
@@ -217,31 +217,37 @@ void Search(char* seq_file_name) {
 		} else {
 			//some shit happened
 			printf("Can't prepare sqlite3_prepare_v2 'SELECT ID, string FROM sequence\
-			INNER JOIN (SELECT DISTINCT baseString FROM SubSequence WHERE string = %s\
-			) AS keys  ON sequence. id = keys.baseString'", substr.c_str());
+ INNER JOIN (SELECT DISTINCT baseString FROM SubSequence WHERE string = %s) AS \
+keys  ON sequence. id = keys.baseString'", substr.c_str());
 		}
 	}
 	//start filtering============================================================= 
+	printf("loading %lu sequences from database\n", dump.size());
 	//first filter - diagonals count && max length--------------------------------
 	for (auto it = dump.begin(); it != dump.end(); ) {
 		if (filter1(d_count, m_count, seq, (*it).second)) {
 			it = dump.erase(it);
 		} else it++;
 	}
+	printf("after first filter: %lu sequences\n", dump.size());
+	//second filter---------------------------------------------------------------
+	//...
+	//S-W for winners
+	//...
 }
 
 int main(int argc, char** argv) {
 	if (argc < 2) {
 		printf("Too few arguments\n");
 		printf("\tpossible arguments:\n");
-		printf("\t\tc <file name> <magic num> - create new DB from <file name>\
-		with <magic num>\n");
-		printf("\t\ta <file name> - add sequences from <file name> to exsisting\
-		DB\n");
-		printf("\t\ts <file name> - search seq from <file name> in exsisting DB\n");
+		printf("\t\tc <file name> <magic num> - create new DB from \
+<file name>with <magic num>\n");
+		printf("\t\ta <file name> - add sequences from <file name> to \
+exsistingDB\n");
+		printf("\t\ts <file name> - search seq from <file name> in \
+exsisting DB\n");
 		return 0;
 	}
-	
 	switch (*argv[1]) {
 		case 'c':
 			//create
@@ -261,6 +267,5 @@ int main(int argc, char** argv) {
 		default:
 			printf("Unknown command %s\n", argv[1]);
 	}
-	
 	return 0;
 }
