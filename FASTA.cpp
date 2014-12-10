@@ -11,6 +11,37 @@
 #define DB_CONFIG_FILE_NAME "DB_config.txt"
 #define DB_NAME "FASTA.db"
 
+// Удаление пробельных символов
+void DeleteNewLines(std::string &str) {
+	str.erase(std::remove_if(str.begin(), str.end(),
+	[](char c){ return (c == ' ' || c == '\n' || c == '\t'); }), str.end());
+} 
+
+
+void GetScoreMatrix(std::string &alphabet, int* index_arr, int* score_matrix, int penalty std::istream& fs){
+	fs >> std::ws;
+	std::getline(fs, alphabet);
+	SpaceErase(alphabet);
+	for (int i = 0; i < alphabet.length(); i++) {
+		index_arr[alphabet[i]] = i;
+	}
+	int** score_matrix = new int* [alphabet.length()];
+	for (int i = 0; i < alphabet.length(); i++) {
+		score_matrix[i] = new int [alphabet.length()];
+	}
+	for (int i = 0; i < alphabet.length(); i++) {
+		for (int j = 0; j < alphabet.length(); j++) {
+			fs >> score_matrix[i * alphabet.length() + j];
+			/*if (i == j) score_matrix[i][j] = 2;
+			 e*lse score_matrix[i][jvoid] = -1;*/
+		}
+	}
+	fs >> penalty;
+	fs.close();
+	//
+
+}
+
 bool filter1(int d_count, int m_count, 
 						 const std::string &seq1, const std::string &seq2) 
 {
@@ -18,17 +49,23 @@ bool filter1(int d_count, int m_count,
 	int n = seq1.length(), m = seq2.length();
 	int* matrix = new int[n * m * sizeof(int)];
 	int maxlen = 0, count = 0;
+	
 	//initialize==================================================================
-	for (int i = 0; i < seq1.length(); i++) matrix[i*m+0] = (seq1[i] == seq2[0]);
-	for (int j = 0; j < seq2.length(); j++) matrix[0*m+j] = (seq1[0] == seq2[j]);
+	for (int i = 0; i < seq1.length(); i++) 
+		matrix[i*m+0] = (seq1[i] == seq2[0]);
+	
+	for (int j = 0; j < seq2.length(); j++) 
+		matrix[0*m+j] = (seq1[0] == seq2[j]);
+	
 	//calc========================================================================
 	for (int i = 1; i < seq1.length(); i++) {
 		for (int j = 1; j < seq2.length(); j++) {
 			if (seq1[i] != seq2[j]) {
-				if (matrix[(i-1)*m+j-1] > 1) count++;
+				if (matrix[(i-1)*m + j-1] > 1) count++;
+				matrix[i*m + j] = 0;
 			} else {
-				matrix[i*m+j] = matrix[(i-1)*m+j-1] + 1;
-				if (matrix[i*m+j] > maxlen) maxlen = matrix[i*m+j];
+				matrix[i*m + j] = matrix[(i-1)*m + j-1] + 1;
+				if (matrix[i*m + j] > maxlen) maxlen = matrix[i*m + j];
 			}
 		}
 	}
@@ -36,6 +73,51 @@ bool filter1(int d_count, int m_count,
 	delete[] matrix;
 	//check=======================================================================
 	return (count < d_count || maxlen < m_count);
+}
+
+bool filter2(int score_infinum, int* score_matrix,
+						 int* index_arr, int alphabetLength, 
+						 const std::string &seq1, const std::string &seq2) 
+{
+	//alloc=======================================================================
+	int n = seq1.length(), m = seq2.length();
+	int* matrix = new int[n * m * sizeof(int)];
+	int maxlen = 0, count = 0;
+	
+	//initialize==================================================================
+	for (int i = 0; i < seq1.length(); i++) {
+		int scr = score_matrix[index_arr[seq1[i]] * alphabetLength +
+													 index_arr[seq1[0]]
+													];
+		matrix[i*m+0] = (scr > 0) ? scr : 0;
+	}
+	for (int i = 0; i < seq2.length(); i++){
+		int scr = score_matrix[index_arr[seq1[0]] * alphabetLength + 
+																 index_arr[seq1[i]]
+																];	
+		matrix[0*m+i] = (scr > 0) ? scr : 0;
+	}
+	
+	//calc========================================================================
+	int maxScore = 0;
+	for (int i = 1; i < seq1.length(); i++) {
+		for (int j = 1; j < seq2.length(); j++) {
+			if (seq1[i] == seq2[j]) {
+				matrix[i*m + j] =
+					score_matrix[index_arr[seq1[i]] * alphabetLength + 
+											 index_arr[seq1[j]]
+											] +
+					matrix[(i-1)*m + j-1];
+				if (matrix[i*m+j] > maxScore)
+					maxScore = matrix[i*m+j];
+			} else 
+				matrix[i*m + j] = 0;
+		}
+	}
+	//free========================================================================
+	delete[] matrix;
+	//check=======================================================================
+	return (maxScore < score_infinum);
 }
 
 static int callback(void* NotUsed, int argc, char** argv, char** azColName){
@@ -88,7 +170,7 @@ cription, string) VALUES(%s, %s)'\n", name.c_str(), seq.c_str());
 LUES(?, ?, ?)";
 						rc = sqlite3_prepare_v2(db, insert.c_str(), insert.length(), 
 																		&stmt, &pzTest);
-						if( rc == SQLITE_OK ){
+						if( rc == SQLITE_OK ){m_count
 							sqlite3_bind_text(stmt, 1, seq.substr(i, magic_num).c_str(), 
 																magic_num, 0);
 							sqlite3_bind_int(stmt, 2, i);
@@ -124,7 +206,7 @@ LUES(?, ?, ?)";
 void CreateDB(char* file_name, char* magic_num) {
 	//variables to work with database=============================================
 	sqlite3 *db;
-	char *zErrMsg = 0;
+	char *zErrMsg = 0;//....
 	int rc;
 	std::string dbName(DB_NAME);
 	std::ifstream fin("FASTAquery.sql");
@@ -154,7 +236,7 @@ void CreateDB(char* file_name, char* magic_num) {
 	struct tm * timeinfo;
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
-	conf_file << magic_num << '\n';
+	conf_file << magic_num << '\n';m_count
 	conf_file << "Creation time: " << asctime(timeinfo);
 	conf_file.close();
 }
@@ -170,16 +252,22 @@ void AddDB(char* file_name) {
 }
 
 void Search(char* seq_file_name) {
+	
+	
 	//read input seq==============================================================
 	std::ifstream input_seq(seq_file_name);
 	std::string seq = "";
 	//read seq--------------------------------------------------------------------
 	std::getline(input_seq, seq);
 	//read extra params-----------------------------------------------------------
-	int d_count, m_count;
-	input_seq >> d_count >> m_count;
+	int d_count, m_count, p_count;
+	input_seq >> d_count >> m_count >> p_count;
 	//read alphabet && score matrix-----------------------------------------------
-	//....
+	std::string alphabet;
+	int index_arr[128];
+	int* score_matrix = NULL;
+	int penalty;
+	GetScoreMatrix(alphabet, index_arr, score_matrix, penalty, input_seq);
 	//close file------------------------------------------------------------------
 	input_seq.close();
 	//open DB config file=========================================================
@@ -231,9 +319,17 @@ keys  ON sequence. id = keys.baseString'", substr.c_str());
 	}
 	printf("after first filter: %lu sequences\n", dump.size());
 	//second filter---------------------------------------------------------------
-	//...
+	for (auto it = dump.begin(); it != dump.end(); ) {
+		if (filter2(p_count, score_matrix, index_arr, alphabet.length(), 
+				seq, (*it).second)) {
+			it = dump.erase(it);
+		} else it++;
+	}
+	printf("after second filter: %lu sequences\n", dump.size());
 	//S-W for winners
 	//...
+	//free========================================================================
+	delete[] score_matrix;
 }
 
 int main(int argc, char** argv) {
@@ -267,5 +363,10 @@ exsisting DB\n");
 		default:
 			printf("Unknown command %s\n", argv[1]);
 	}
+	
+	
+	
+	
+	
 	return 0;
 }
