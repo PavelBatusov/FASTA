@@ -11,35 +11,33 @@
 #define DB_CONFIG_FILE_NAME "DB_config.txt"
 #define DB_NAME "FASTA.db"
 
-// Удаление пробельных символов
-void DeleteNewLines(std::string &str) {
+//удаление пробельных символов
+void SpaceErase(std::string &str) {
 	str.erase(std::remove_if(str.begin(), str.end(),
 	[](char c){ return (c == ' ' || c == '\n' || c == '\t'); }), str.end());
 } 
 
-
-void GetScoreMatrix(std::string &alphabet, int* index_arr, int* score_matrix, int penalty std::istream& fs){
+//чтение алфавита, матрицы очков и штрафа за геп 
+void GetScoreMatrix(std::string &alphabet, int* index_arr, int* &score_matrix, 
+										int penalty, std::istream& fs) {
 	fs >> std::ws;
+	
 	std::getline(fs, alphabet);
 	SpaceErase(alphabet);
+	
+	//факторизация алфавита
 	for (int i = 0; i < alphabet.length(); i++) {
 		index_arr[alphabet[i]] = i;
 	}
-	int** score_matrix = new int* [alphabet.length()];
-	for (int i = 0; i < alphabet.length(); i++) {
-		score_matrix[i] = new int [alphabet.length()];
-	}
+	
+	score_matrix = new int [alphabet.length() * alphabet.length()];
 	for (int i = 0; i < alphabet.length(); i++) {
 		for (int j = 0; j < alphabet.length(); j++) {
 			fs >> score_matrix[i * alphabet.length() + j];
-			/*if (i == j) score_matrix[i][j] = 2;
-			 e*lse score_matrix[i][jvoid] = -1;*/
 		}
 	}
+	
 	fs >> penalty;
-	fs.close();
-	//
-
 }
 
 bool filter1(int d_count, int m_count, 
@@ -50,7 +48,7 @@ bool filter1(int d_count, int m_count,
 	int* matrix = new int[n * m * sizeof(int)];
 	int maxlen = 0, count = 0;
 	
-	//initialize==================================================================
+	//инициализация граничных строк===============================================
 	for (int i = 0; i < seq1.length(); i++) 
 		matrix[i*m+0] = (seq1[i] == seq2[0]);
 	
@@ -69,8 +67,10 @@ bool filter1(int d_count, int m_count,
 			}
 		}
 	}
+	
 	//free========================================================================
 	delete[] matrix;
+	
 	//check=======================================================================
 	return (count < d_count || maxlen < m_count);
 }
@@ -84,13 +84,14 @@ bool filter2(int score_infinum, int* score_matrix,
 	int* matrix = new int[n * m * sizeof(int)];
 	int maxlen = 0, count = 0;
 	
-	//initialize==================================================================
+	//инициализация границ========================================================
 	for (int i = 0; i < seq1.length(); i++) {
 		int scr = score_matrix[index_arr[seq1[i]] * alphabetLength +
 													 index_arr[seq1[0]]
 													];
 		matrix[i*m+0] = (scr > 0) ? scr : 0;
 	}
+	
 	for (int i = 0; i < seq2.length(); i++){
 		int scr = score_matrix[index_arr[seq1[0]] * alphabetLength + 
 																 index_arr[seq1[i]]
@@ -105,7 +106,7 @@ bool filter2(int score_infinum, int* score_matrix,
 			if (seq1[i] == seq2[j]) {
 				matrix[i*m + j] =
 					score_matrix[index_arr[seq1[i]] * alphabetLength + 
-											 index_arr[seq1[j]]
+											 index_arr[seq2[j]]
 											] +
 					matrix[(i-1)*m + j-1];
 				if (matrix[i*m+j] > maxScore)
@@ -114,12 +115,15 @@ bool filter2(int score_infinum, int* score_matrix,
 				matrix[i*m + j] = 0;
 		}
 	}
+	
 	//free========================================================================
 	delete[] matrix;
+	
 	//check=======================================================================
 	return (maxScore < score_infinum);
 }
 
+//колбек для работы с базой
 static int callback(void* NotUsed, int argc, char** argv, char** azColName){
 	for (int i = 0; i < argc; i++) {
 		printf("%s = %s\n", azColName[i], argv[i] ? argv[i] : "NULL");
@@ -129,7 +133,7 @@ static int callback(void* NotUsed, int argc, char** argv, char** azColName){
 }
 
 void InsertDB(char* file_name, int magic_num) {
-	//open DB=====================================================================
+	//открываем базу==============================================================
 	sqlite3 *db;
 	int rc = sqlite3_open(DB_NAME, &db);
 	if( rc ) {
@@ -137,17 +141,20 @@ void InsertDB(char* file_name, int magic_num) {
 		sqlite3_close(db);
 		return;
 	}
-	//open FileName===============================================================
+	
+	//открываем файл с последовательностями=======================================
 	std::ifstream input_seq(file_name);
 	std::string name = "";
 	std::string seq = "";
 	char c;
-	//insert input sequences------------------------------------------------------
+	
+	//вставка последовательностей в базу------------------------------------------
 	while (input_seq.get(c)) {
 		switch (c) {
 			case '>':
-				if (seq.length() && name.length()) {
-					//insert seq---------------------------------------------------------- 
+				//начинается новая последовательность-----------------------------------
+				if (seq.length() && name.length()) { //если уже что-то считано
+					//вставить последовательность в базу
 					sqlite3_stmt *stmt;
 					const char *pzTest;
 					std::string insert("INSERT INTO Sequence (description, string) VALUES\
@@ -163,7 +170,8 @@ void InsertDB(char* file_name, int magic_num) {
 						printf("Can't prepare sqlite3_prepare_v2 'INSERT INTO Sequence (des\
 cription, string) VALUES(%s, %s)'\n", name.c_str(), seq.c_str()); 
 					}
-					//inser subseq--------------------------------------------------------
+					
+					//вставка подпоследовательностей в базу
 					int mainID = sqlite3_last_insert_rowid(db);
 					for (int i = 0; i < seq.length() - magic_num + 1; i++) {
 						insert = "INSERT INTO SubSequence (string, position, baseString) VA\
@@ -187,39 +195,45 @@ LUES(?, ?, ?)";
 				std::getline(input_seq, name);
 				seq = "";
 				break;
+			//опускаем пробельные символы---------------------------------------------
 			case '\t': 
 			case '\n': 
 			case '\r': 
 			case  ' ': 
-				//skip ws---------------------------------------------------------------
 				break;
+			//чтение последовательности-----------------------------------------------
 			default:
 				seq += c;
 		}
 	}
+	
 	//close file==================================================================
 	input_seq.close();
+	
 	//close DB====================================================================
 	sqlite3_close(db);
 }
 
 void CreateDB(char* file_name, char* magic_num) {
-	//variables to work with database=============================================
+	//переменные для работы с базой===============================================
 	sqlite3 *db;
-	char *zErrMsg = 0;//....
+	char *zErrMsg = 0;
 	int rc;
 	std::string dbName(DB_NAME);
 	std::ifstream fin("FASTAquery.sql");
-	//loading SQL query to create DB----------------------------------------------
+	
+	//загружаем SQL запрос на создание базы---------------------------------------
 	std::string query;
 	std::getline(fin, query, '$');
-	//open && create DB-----------------------------------------------------------
+	
+	//открываем и создаем базу----------------------------------------------------
 	rc = sqlite3_open(dbName.c_str(), &db);
 	if( rc ) {
 		printf("Can't open database: %s\n", sqlite3_errmsg(db));
 		sqlite3_close(db);
 		return;
 	}
+	
 	rc = sqlite3_exec(db, query.c_str(), callback, 0, &zErrMsg);
 	if( rc != SQLITE_OK ) {
 		printf("SQL error: %s\n", zErrMsg);
@@ -227,10 +241,13 @@ void CreateDB(char* file_name, char* magic_num) {
 		sqlite3_close(db);
 		return;
 	}
+	
 	sqlite3_close(db);
-	//insert data to base=========================================================
+	
+	//заносим данные в базу=======================================================
 	InsertDB(file_name, atoi(magic_num));
-	//creating DB config file=====================================================
+	
+	//создание конфиг. файла базы=================================================
 	std::ofstream conf_file(DB_CONFIG_FILE_NAME);
 	time_t rawtime;
 	struct tm * timeinfo;
@@ -242,40 +259,45 @@ void CreateDB(char* file_name, char* magic_num) {
 }
 
 void AddDB(char* file_name) {
-	//trying to open DB config file
+	//пытаемся открыть конфиг. файл базы
 	std::ifstream conf_file(DB_CONFIG_FILE_NAME);
 	int magic_num = 0;
 	conf_file >> magic_num;
 	conf_file.close();
-	//adding sequences to DB
+	
+	//вставляем данные в базу
 	InsertDB(file_name, magic_num);
 }
 
 void Search(char* seq_file_name) {
-	
-	
-	//read input seq==============================================================
+	//входная последовательность==================================================
 	std::ifstream input_seq(seq_file_name);
 	std::string seq = "";
-	//read seq--------------------------------------------------------------------
 	std::getline(input_seq, seq);
-	//read extra params-----------------------------------------------------------
+	
+	//параметры поиска------------------------------------------------------------
 	int d_count, m_count, p_count;
 	input_seq >> d_count >> m_count >> p_count;
-	//read alphabet && score matrix-----------------------------------------------
+	
+	//чтение алфавита и матрицы очков---------------------------------------------
 	std::string alphabet;
 	int index_arr[128];
 	int* score_matrix = NULL;
 	int penalty;
+	
 	GetScoreMatrix(alphabet, index_arr, score_matrix, penalty, input_seq);
-	//close file------------------------------------------------------------------
+	
+	//чтение закончено------------------------------------------------------------
 	input_seq.close();
-	//open DB config file=========================================================
+	
+	//инициализация работы с базой================================================
+	//считываем информацию из конфиг. файла
 	std::ifstream conf_file(DB_CONFIG_FILE_NAME);
 	int magic_num = 0;
 	conf_file >> magic_num;
 	conf_file.close();
-	//start work with DB==========================================================
+	
+	//открытие базы===============================================================
 	sqlite3 *db;
 	int rc = sqlite3_open(DB_NAME, &db);
 	if( rc ){
@@ -283,9 +305,11 @@ void Search(char* seq_file_name) {
 		sqlite3_close(db);
 		return;
 	}
-	//for substr------------------------------------------------------------------
-	//hashmap for all strings from base who is good
+	
+	//для всех подстрок входной последовательности--------------------------------
+	//составляем словарь со строчками из базы, имеющии такие подпоследовательности
 	std::map<int, std::string> dump;
+	
 	for (int i = 0; i < seq.length() - magic_num + 1; i++) {
 		std::string substr = seq.substr(i, magic_num);
 		std::string select = "SELECT ID, string FROM sequence INNER JOIN (SELECT DI\
@@ -293,6 +317,7 @@ STINCT baseString FROM SubSequence WHERE string = ? ) AS keys  ON sequence.id =\
  keys.baseString";
 		sqlite3_stmt *stmt;
 		const char *pzTest;
+		
 		rc = sqlite3_prepare_v2(db, select.c_str(), select.length(), &stmt,&pzTest);
 		if( rc == SQLITE_OK ) {
 			sqlite3_bind_text(stmt, 1, substr.c_str(), substr.length(), 0);
@@ -309,25 +334,32 @@ STINCT baseString FROM SubSequence WHERE string = ? ) AS keys  ON sequence.id =\
 keys  ON sequence. id = keys.baseString'", substr.c_str());
 		}
 	}
-	//start filtering============================================================= 
+	
+	//фильтрация первичной выборки================================================ 
 	printf("loading %lu sequences from database\n", dump.size());
-	//first filter - diagonals count && max length--------------------------------
+	
+	//запуск первого фильтра - проверка на число диагоналей и макс. длинну--------
 	for (auto it = dump.begin(); it != dump.end(); ) {
 		if (filter1(d_count, m_count, seq, (*it).second)) {
 			it = dump.erase(it);
 		} else it++;
 	}
+	
 	printf("after first filter: %lu sequences\n", dump.size());
-	//second filter---------------------------------------------------------------
+	
+	//второй фильтр - по очкам----------------------------------------------------
 	for (auto it = dump.begin(); it != dump.end(); ) {
 		if (filter2(p_count, score_matrix, index_arr, alphabet.length(), 
 				seq, (*it).second)) {
 			it = dump.erase(it);
 		} else it++;
 	}
+	
 	printf("after second filter: %lu sequences\n", dump.size());
+	
 	//S-W for winners
 	//...
+	
 	//free========================================================================
 	delete[] score_matrix;
 }
@@ -363,10 +395,5 @@ exsisting DB\n");
 		default:
 			printf("Unknown command %s\n", argv[1]);
 	}
-	
-	
-	
-	
-	
 	return 0;
 }
