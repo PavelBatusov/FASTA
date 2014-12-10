@@ -170,7 +170,7 @@ cription, string) VALUES(%s, %s)'\n", name.c_str(), seq.c_str());
 LUES(?, ?, ?)";
 						rc = sqlite3_prepare_v2(db, insert.c_str(), insert.length(), 
 																		&stmt, &pzTest);
-						if( rc == SQLITE_OK ){m_count
+						if( rc == SQLITE_OK ){
 							sqlite3_bind_text(stmt, 1, seq.substr(i, magic_num).c_str(), 
 																magic_num, 0);
 							sqlite3_bind_int(stmt, 2, i);
@@ -236,7 +236,7 @@ void CreateDB(char* file_name, char* magic_num) {
 	struct tm * timeinfo;
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
-	conf_file << magic_num << '\n';m_count
+	conf_file << magic_num << '\n';
 	conf_file << "Creation time: " << asctime(timeinfo);
 	conf_file.close();
 }
