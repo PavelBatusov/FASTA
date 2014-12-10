@@ -1,6 +1,7 @@
 #include <map>
 #include <time.h> 
 #include <string>
+#include <vector>
 #include <fstream>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,6 +12,21 @@
 #define DB_CONFIG_FILE_NAME "DB_config.txt"
 #define DB_NAME "FASTA.db"
 
+//результаты прохода Смита-Ватермана
+struct SWres {
+	int score;
+	int i, j;
+	int* way;
+	std::string seq1, seq2;
+	SWres(int scr, int pos_i, int pos_j, int* w, std::string s1, std::string s2):
+		score(scr), i(pos_i), j(pos_j), way(w), seq1(s1), seq2(s2) {};	
+	~SWres() { if (way) delete[] way; }
+};
+
+bool SWresCompare(const SWres &a, const SWres &b) {
+	return (a.score < b.score);
+}
+
 //удаление пробельных символов
 void SpaceErase(std::string &str) {
 	str.erase(std::remove_if(str.begin(), str.end(),
@@ -19,7 +35,7 @@ void SpaceErase(std::string &str) {
 
 //чтение алфавита, матрицы очков и штрафа за геп 
 void GetScoreMatrix(std::string &alphabet, int* index_arr, int* &score_matrix, 
-										int penalty, std::istream& fs) {
+										int &penalty, std::istream& fs) {
 	fs >> std::ws;
 	
 	std::getline(fs, alphabet);
@@ -130,6 +146,90 @@ static int callback(void* NotUsed, int argc, char** argv, char** azColName){
 	}
 	printf("\n");
 	return 0;
+}
+
+void GetAllign(int* way, int i, int j, 
+							 const std::string &seq1, const std::string &seq2, 
+							 std::string &result1, std::string &result2) 
+{
+	int n = seq1.length();
+	//обратный ход по таблице
+	while (i && j) {
+		if (way[i*n + j] == 1) { 
+			i--; j--; 
+			result1.insert(0, 1, seq1[i]); 
+			result2.insert(0, 1, seq2[j]);  
+		} else if (way[i*n + j] == 2) { 
+			j--; 
+			result1.insert(0, 1, '-'); 
+			result2.insert(0, 1, seq2[j]);  
+		} else { 
+			i--; 
+			result1.insert(0, 1, seq1[i]); 
+			result2.insert(0, 1, '-');  
+		}
+	}
+	
+	while (i) {
+		i--;
+		result1.insert(0, 1, seq1[i]);
+		result2.insert(0, 1, ' ');
+	}
+	
+	while (j) {
+		j--;
+		result1.insert(0, 1, ' ');
+		result2.insert(0, 1, seq2[j]);		
+	}
+}
+
+SWres SmithWaterman(int* score_matrix, int* index_array, int alpha_len,
+										int penalty, const std::string &seq1, const std::string &seq2) 
+{
+	int n = seq1.length(), m = seq2.length();
+	int* score = new int [(n + 1) * (m + 1)];
+	int* way = new int [(n + 1) * (m + 1)];
+	
+	for (int i = 0; i < n; i++) {
+		score[i * m] = 0;
+	}
+	
+	for (int j = 0; j < m; j++) {
+		score[j] = 0;
+	}
+	
+	for (int i = 1; i < n + 1; i++) {
+		for (int j = 1; j < m + 1; j++) {
+			//оставить все как есть
+			int way1 = score[(i-1)*m + j-1] + 
+				score_matrix[index_array[seq1[i-1]]*alpha_len + index_array[seq2[j-1]]];
+			//порвать seq1
+			int way2 = score[i*m + j-1] + penalty;
+			//порвать seq2
+			int way3 = score[(i-1)*m + j] + penalty;
+			//выбираем максимум
+			if (way1 >= way2 && way1 >= way3) {
+				score[i*m + j] = way1;
+				way[i*m + j] = 1;
+			} else if (way2 >= way1 && way2 >= way3) {
+				score[i*m + j] = way2;
+				way[i*m + j] = 2;
+			} else {
+				score[i*m + j] = way3;
+				way[i*m + j] = 3;
+			}
+		}
+	}
+	
+	int max_score = score[n*m], finish = 0;
+	for (int j = 1; j <= m; j++) {
+		if (score[m*n + j] > max_score) {
+			max_score = score[m*n + j];
+			finish = j;
+		}
+	}
+	
+	return SWres(max_score, n, finish, way, seq1, seq2);
 }
 
 void InsertDB(char* file_name, int magic_num) {
@@ -357,8 +457,24 @@ keys  ON sequence. id = keys.baseString'", substr.c_str());
 	
 	printf("after second filter: %lu sequences\n", dump.size());
 	
-	//S-W for winners
-	//...
+	//Смит-Ватерман для "финалистов"
+	std::vector<SWres> results;
+	while(!dump.empty()) {
+		results.push_back(SmithWaterman(score_matrix, index_arr, alphabet.length(), 
+											penalty, seq, dump.begin()->second));
+		dump.erase(dump.begin());
+	}
+	
+	//сортировка результатов
+	std::sort(results.begin(), results.end(), SWresCompare);
+	int position = 0;
+	for (auto it = results.begin(); it != results.end(); it++) {
+		std::string res1 = "", res2 = "";
+		GetAllign(it->way, it->i, it->j, it->seq1, it->seq2, res1, res2); 
+		printf("#%d\n", ++position);
+		printf("%s\n", res1.c_str());
+		printf("%s\n", res2.c_str());
+	}
 	
 	//free========================================================================
 	delete[] score_matrix;
