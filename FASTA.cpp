@@ -17,7 +17,7 @@ struct SWres {
 	int score;
 	int i, j;
 	int* way;
-	std::string seq1, seq2;
+	std::string seq1, seq2, name;
 	
 	SWres(int scr, int pos_i, int pos_j, int* w, std::string s1, std::string s2):
 		score(scr), i(pos_i), j(pos_j), way(w), seq1(s1), seq2(s2) {};	
@@ -484,6 +484,25 @@ keys  ON sequence. id = keys.baseString'", substr.c_str());
 	while(!dump.empty()) {
 		results.push_back(SmithWaterman(score_matrix, index_arr, alphabet.length(), 
 											penalty, seq, dump.begin()->second));
+		
+		//получить имяпоследовательности из базы
+		sqlite3_stmt *stmt;
+		const char *pzTest;
+		std::string select = "SELECT description FROM Sequence WHERE ID = ?";
+		
+		rc = sqlite3_prepare_v2(db, select.c_str(), select.length(), 
+														&stmt, &pzTest);
+		if( rc == SQLITE_OK ){
+			sqlite3_bind_int(stmt, 1, dump.begin()->first);
+			sqlite3_step(stmt);
+			results.back().name = (char*)sqlite3_column_text(stmt, 0);
+			sqlite3_finalize(stmt);
+		} else { 
+			printf("Can't prepare sqlite3_prepare_v2 'SELECT description \
+							FROM Sequence WHERE ID = %d'\n", dump.begin()->first
+						); 
+		}
+		
 		dump.erase(dump.begin());
 	}
 	
@@ -495,7 +514,7 @@ keys  ON sequence. id = keys.baseString'", substr.c_str());
 	for (auto it = results.begin(); it != results.end(); it++) {
 		std::string res1 = "", res2 = "";
 		GetAllign(it->way, it->i, it->j, it->seq1, it->seq2, res1, res2); 
-		printf("#%d\n", ++position);
+		printf("\n#%d %s\n", ++position, it->name.c_str());
 		printf(">score: %d\n", it->score);
 		printf(">alignment:\n");
 		printf("%s\n", res1.c_str());
