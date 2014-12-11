@@ -18,14 +18,16 @@ struct SWres {
 	int i, j;
 	int* way;
 	std::string seq1, seq2;
+	
 	SWres(int scr, int pos_i, int pos_j, int* w, std::string s1, std::string s2):
 		score(scr), i(pos_i), j(pos_j), way(w), seq1(s1), seq2(s2) {};	
-	~SWres() { if (way) delete[] way; }
+	
+	~SWres() {}
+	
+	bool operator < (const SWres &other) const { return (score > other.score); }
+	
+	void FreeSharedMem() { if (way) delete[] way; }
 };
-
-bool SWresCompare(const SWres &a, const SWres &b) {
-	return (a.score < b.score);
-}
 
 //удаление пробельных символов
 void SpaceErase(std::string &str) {
@@ -35,7 +37,8 @@ void SpaceErase(std::string &str) {
 
 //чтение алфавита, матрицы очков и штрафа за геп 
 void GetScoreMatrix(std::string &alphabet, int* index_arr, int* &score_matrix, 
-										int &penalty, std::istream& fs) {
+										int &penalty, std::istream& fs) 
+{
 	fs >> std::ws;
 	
 	std::getline(fs, alphabet);
@@ -152,34 +155,34 @@ void GetAllign(int* way, int i, int j,
 							 const std::string &seq1, const std::string &seq2, 
 							 std::string &result1, std::string &result2) 
 {
-	int n = seq1.length();
+	int m = seq2.length();
+	
+	//добавление правых "хвостов"
+	if (j == m) result1 = seq1.substr(i, seq1.length() - i);
+	else result2 = seq2.substr(j, seq2.length() - j);
+	
 	//обратный ход по таблице
 	while (i && j) {
-		if (way[i*n + j] == 1) { 
-			i--; j--; 
-			result1.insert(0, 1, seq1[i]); 
-			result2.insert(0, 1, seq2[j]);  
-		} else if (way[i*n + j] == 2) { 
-			j--; 
+		if (way[i*m + j] == 1) { 
+			result1.insert(0, 1, seq1[--i]); 
+			result2.insert(0, 1, seq2[--j]);  
+		} else if (way[i*m + j] == 2) { 
 			result1.insert(0, 1, '-'); 
-			result2.insert(0, 1, seq2[j]);  
+			result2.insert(0, 1, seq2[--j]);  
 		} else { 
-			i--; 
-			result1.insert(0, 1, seq1[i]); 
+			result1.insert(0, 1, seq1[--i]); 
 			result2.insert(0, 1, '-');  
 		}
 	}
 	
 	while (i) {
-		i--;
-		result1.insert(0, 1, seq1[i]);
+		result1.insert(0, 1, seq1[--i]);
 		result2.insert(0, 1, ' ');
 	}
 	
 	while (j) {
-		j--;
 		result1.insert(0, 1, ' ');
-		result2.insert(0, 1, seq2[j]);		
+		result2.insert(0, 1, seq2[--j]);		
 	}
 }
 
@@ -190,11 +193,11 @@ SWres SmithWaterman(int* score_matrix, int* index_array, int alpha_len,
 	int* score = new int [(n + 1) * (m + 1)];
 	int* way = new int [(n + 1) * (m + 1)];
 	
-	for (int i = 0; i < n; i++) {
+	for (int i = 0; i <= n; i++) {
 		score[i * m] = 0;
 	}
 	
-	for (int j = 0; j < m; j++) {
+	for (int j = 0; j <= m; j++) {
 		score[j] = 0;
 	}
 	
@@ -221,15 +224,25 @@ SWres SmithWaterman(int* score_matrix, int* index_array, int alpha_len,
 		}
 	}
 	
-	int max_score = score[n*m], finish = 0;
-	for (int j = 1; j <= m; j++) {
-		if (score[m*n + j] > max_score) {
-			max_score = score[m*n + j];
-			finish = j;
+	int max_score = score[m], fi = 0, fj = 0;
+	
+	for (int i = 1; i <= n; i++) {
+		if (score[m*i + m] > max_score) {
+			max_score = score[m*i + m];
+			fi = i;
 		}
 	}
 	
-	return SWres(max_score, n, finish, way, seq1, seq2);
+	for (int j = 1; j <= m; j++) {
+		if (score[m*n + j] > max_score) {
+			max_score = score[m*n + j];
+			fj = j;
+		}
+	}
+	
+	return (score[m*fi + m] > score[m*n + fj]) ? 
+		SWres(max_score, fi, m, way, seq1, seq2) :
+		SWres(max_score, n, fj, way, seq1, seq2);
 }
 
 void InsertDB(char* file_name, int magic_num) {
@@ -354,7 +367,7 @@ void CreateDB(char* file_name, char* magic_num) {
 	time(&rawtime);
 	timeinfo = localtime(&rawtime);
 	conf_file << magic_num << '\n';
-	conf_file << "Creation time: " << asctime(timeinfo);
+	conf_file << "Creation time: " << asctime(timeinfo) << std::endl;
 	conf_file.close();
 }
 
@@ -367,6 +380,15 @@ void AddDB(char* file_name) {
 	
 	//вставляем данные в базу
 	InsertDB(file_name, magic_num);
+	
+	//немного логов :)
+	std::fstream fs(DB_CONFIG_FILE_NAME, std::ios::out|std::ios::app);
+	time_t rawtime;
+	struct tm * timeinfo;
+	time(&rawtime);
+	timeinfo = localtime(&rawtime);
+	fs << "Modifed: " << asctime(timeinfo) << std::endl;
+	fs.close();
 }
 
 void Search(char* seq_file_name) {
@@ -466,14 +488,25 @@ keys  ON sequence. id = keys.baseString'", substr.c_str());
 	}
 	
 	//сортировка результатов
-	std::sort(results.begin(), results.end(), SWresCompare);
+	std::sort(results.begin(), results.end());
+	
+	//вывод ответа
 	int position = 0;
 	for (auto it = results.begin(); it != results.end(); it++) {
 		std::string res1 = "", res2 = "";
 		GetAllign(it->way, it->i, it->j, it->seq1, it->seq2, res1, res2); 
 		printf("#%d\n", ++position);
+		printf(">score: %d\n", it->score);
+		printf(">alignment:\n");
 		printf("%s\n", res1.c_str());
 		printf("%s\n", res2.c_str());
+		for (int i = 0; i < res1.length(); i++) {
+			char c = '!';
+			if (res1[i] == ' ' || res2[i] == ' ' || res1[i] == res2[i]) c = ' ';
+			printf("%c", c);
+		}
+		printf("\n");
+		it->FreeSharedMem();
 	}
 	
 	//free========================================================================
@@ -492,6 +525,7 @@ exsistingDB\n");
 exsisting DB\n");
 		return 0;
 	}
+	
 	switch (*argv[1]) {
 		case 'c':
 			//create
@@ -511,5 +545,6 @@ exsisting DB\n");
 		default:
 			printf("Unknown command %s\n", argv[1]);
 	}
+	
 	return 0;
 }
