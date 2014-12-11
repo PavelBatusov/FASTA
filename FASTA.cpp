@@ -533,6 +533,7 @@ keys  ON sequence. id = keys.baseString'", substr.c_str());
 	
 	//free========================================================================
 	sqlite3_close(db);
+	
 	delete[] score_matrix;
 }
 
@@ -555,16 +556,19 @@ exsisting DB\n");
 			if (argc > 3) CreateDB(argv[2], argv[3]);
 			else printf("Not enough arguments\n");
 			break;
+			
 		case 'a':
 			//add
 			if (argc > 2) AddDB(argv[2]);
 			else printf("Not enough arguments\n");
 			break;
+			
 		case 's':
 			//search
 			if (argc > 2) Search(argv[2]);
 			else printf("Not enough arguments\n");
 			break;
+			
 		default:
 			printf("Unknown command %s\n", argv[1]);
 	}
