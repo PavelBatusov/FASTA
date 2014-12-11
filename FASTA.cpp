@@ -104,24 +104,24 @@ bool filter2(int score_infinum, int* score_matrix,
 	int maxlen = 0, count = 0;
 	
 	//инициализация границ========================================================
-	for (int i = 0; i < seq1.length(); i++) {
+	for (int i = 0; i < n; i++) {
 		int scr = score_matrix[index_arr[seq1[i]] * alphabetLength +
-													 index_arr[seq1[0]]
+													 index_arr[seq2[0]]
 													];
 		matrix[i*m+0] = (scr > 0) ? scr : 0;
 	}
 	
-	for (int i = 0; i < seq2.length(); i++){
+	for (int i = 0; i < m; i++){
 		int scr = score_matrix[index_arr[seq1[0]] * alphabetLength + 
-																 index_arr[seq1[i]]
+																 index_arr[seq2[i]]
 																];	
 		matrix[0*m+i] = (scr > 0) ? scr : 0;
 	}
 	
 	//calc========================================================================
 	int maxScore = 0;
-	for (int i = 1; i < seq1.length(); i++) {
-		for (int j = 1; j < seq2.length(); j++) {
+	for (int i = 1; i < n; i++) {
+		for (int j = 1; j < m; j++) {
 			if (seq1[i] == seq2[j]) {
 				matrix[i*m + j] =
 					score_matrix[index_arr[seq1[i]] * alphabetLength + 
@@ -240,9 +240,12 @@ SWres SmithWaterman(int* score_matrix, int* index_array, int alpha_len,
 		}
 	}
 	
-	return (score[m*fi + m] > score[m*n + fj]) ? 
-		SWres(max_score, fi, m, way, seq1, seq2) :
-		SWres(max_score, n, fj, way, seq1, seq2);
+	char flag = (score[m*fi + m] > score[m*n + fj]);
+	
+	delete[] score;
+	
+	return (flag) ? SWres(max_score, fi, m, way, seq1, seq2) :
+									SWres(max_score, n, fj, way, seq1, seq2);
 }
 
 void InsertDB(char* file_name, int magic_num) {
@@ -529,6 +532,7 @@ keys  ON sequence. id = keys.baseString'", substr.c_str());
 	}
 	
 	//free========================================================================
+	sqlite3_close(db);
 	delete[] score_matrix;
 }
 
